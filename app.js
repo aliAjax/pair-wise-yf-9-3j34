@@ -1,56 +1,8 @@
-const storageKey = "zfl18-boardgame-rule-cards";
-const today = new Date();
-
-const defaultState = {
-  selectedId: "",
-  games: [
-    {
-      id: crypto.randomUUID(),
-      name: "奥尔良",
-      minPlayers: 2,
-      maxPlayers: 4,
-      duration: 90,
-      complexity: "中",
-      lastPlayed: "2025-11-20",
-      cover: "",
-      forgets: ["商站建造前先确认道路或水路连接", "袋中随从抽完后不是重洗弃堆，而是从已回袋内容继续抽"],
-      disputes: ["事件顺序和玩家动作结算先后", "科技板是否能替代所有同类随从"],
-      setup: ["按人数放置货物板块", "每位玩家拿起始随从、商人和个人板"],
-      scoring: ["货物分数", "商站和市民乘区块", "金币和建筑剩余加分"]
-    },
-    {
-      id: crypto.randomUUID(),
-      name: "盖亚计划",
-      minPlayers: 1,
-      maxPlayers: 4,
-      duration: 150,
-      complexity: "重",
-      lastPlayed: "2025-08-02",
-      cover: "",
-      forgets: ["联邦连接时卫星数量和能量消耗要一起核对", "研究升到顶必须拿对应科技板限制"],
-      disputes: ["被动充能是否能拒绝", "星球改造费用受哪些能力影响"],
-      setup: ["随机终局计分板和回合得分板", "按种族设置起始资源和母星"],
-      scoring: ["终局计分板", "科技轨排名", "联邦和建筑分"]
-    },
-    {
-      id: crypto.randomUUID(),
-      name: "花砖物语",
-      minPlayers: 2,
-      maxPlayers: 4,
-      duration: 45,
-      complexity: "轻",
-      lastPlayed: "2026-03-15",
-      cover: "",
-      forgets: ["每轮结束先铺墙再补工厂展示区", "地板线扣分后清空对应砖"],
-      disputes: ["同色砖放置限制是否看整面墙", "中央区起始玩家标记是否必须拿"],
-      setup: ["按人数放工厂圆盘", "每个圆盘补4块砖"],
-      scoring: ["横竖相邻即时分", "完整行列和颜色终局加分"]
-    }
-  ]
-};
-
-let state = loadState();
+// 界面层：DOM 渲染与事件绑定。业务逻辑见 rules.js（规则）、queue.js（复习队列）、storage.js（本地存储）
+let state = AppStorage.load(Rules.createDefaultState());
 if (!state.selectedId) state.selectedId = state.games[0]?.id || "";
+
+let queueNotice = "";
 
 const els = {
   searchInput: document.querySelector("#searchInput"),
@@ -70,62 +22,45 @@ const els = {
   gameCount: document.querySelector("#gameCount"),
   ruleCount: document.querySelector("#ruleCount"),
   staleGame: document.querySelector("#staleGame"),
-  visibleCount: document.querySelector("#visibleCount")
+  visibleCount: document.querySelector("#visibleCount"),
+  queueView: document.querySelector("#queueView")
 };
 
-function loadState() {
-  const saved = localStorage.getItem(storageKey);
-  if (!saved) return structuredClone(defaultState);
-  try {
-    return { ...structuredClone(defaultState), ...JSON.parse(saved) };
-  } catch {
-    return structuredClone(defaultState);
-  }
-}
-
 function saveState() {
-  localStorage.setItem(storageKey, JSON.stringify(state));
+  AppStorage.save(state);
 }
 
-function daysSince(dateString) {
-  const date = new Date(`${dateString}T00:00:00`);
-  return Math.max(0, Math.floor((today - date) / 86400000));
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
-function getAllRules(game) {
-  return [...game.forgets, ...game.disputes, ...game.setup, ...game.scoring];
-}
-
-function getFilteredGames() {
-  const keyword = els.searchInput.value.trim();
-  const player = els.playerFilter.value;
-  const complexity = els.complexityFilter.value;
-  const games = state.games.filter((game) => {
-    const text = `${game.name}${getAllRules(game).join("")}`;
-    const matchesKeyword = !keyword || text.includes(keyword);
-    const matchesPlayer = player === "all" || (Number(player) >= game.minPlayers && Number(player) <= game.maxPlayers);
-    const matchesComplexity = complexity === "all" || game.complexity === complexity;
-    return matchesKeyword && matchesPlayer && matchesComplexity;
-  });
-
-  if (els.sortMode.value === "name") return games.sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
-  if (els.sortMode.value === "complexity") {
-    const rank = { 轻: 1, 中: 2, 重: 3 };
-    return games.sort((a, b) => rank[b.complexity] - rank[a.complexity]);
-  }
-  return games.sort((a, b) => daysSince(b.lastPlayed) - daysSince(a.lastPlayed));
+function formatTime(iso) {
+  if (!iso) return "-";
+  const date = new Date(iso);
+  const pad = (num) => String(num).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function renderSummary() {
-  const allRuleCount = state.games.reduce((sum, game) => sum + getAllRules(game).length, 0);
-  const stale = [...state.games].sort((a, b) => daysSince(b.lastPlayed) - daysSince(a.lastPlayed))[0];
+  const allRuleCount = state.games.reduce((sum, game) => sum + Rules.getAllRules(game).length, 0);
+  const stale = [...state.games].sort((a, b) => Rules.daysSince(b.lastPlayed) - Rules.daysSince(a.lastPlayed))[0];
   els.gameCount.textContent = state.games.length;
   els.ruleCount.textContent = allRuleCount;
-  els.staleGame.textContent = stale ? `${daysSince(stale.lastPlayed)}天` : "-";
+  els.staleGame.textContent = stale ? `${Rules.daysSince(stale.lastPlayed)}天` : "-";
 }
 
 function renderList() {
-  const games = getFilteredGames();
+  const games = Rules.filterGames(state.games, {
+    keyword: els.searchInput.value.trim(),
+    player: els.playerFilter.value,
+    complexity: els.complexityFilter.value,
+    sortMode: els.sortMode.value
+  });
   els.visibleCount.textContent = `${games.length}个匹配`;
   els.gameList.innerHTML =
     games
@@ -139,7 +74,7 @@ function renderList() {
                   ? `<img src="${game.cover}" alt="${escapeHtml(game.name)}封面" />`
                   : `<span>${escapeHtml(game.name.slice(0, 2))}</span>`
               }
-              <span class="stale-ribbon">${daysSince(game.lastPlayed)}天未玩</span>
+              <span class="stale-ribbon">${Rules.daysSince(game.lastPlayed)}天未玩</span>
             </div>
             <div class="game-body">
               <h3>${escapeHtml(game.name)}</h3>
@@ -173,19 +108,13 @@ function renderDetail() {
           <span class="pill">${game.minPlayers}-${game.maxPlayers}人</span>
           <span class="pill">${game.duration}分钟</span>
           <span class="pill heavy">${escapeHtml(game.complexity)}</span>
-          <span class="pill">${daysSince(game.lastPlayed)}天未玩</span>
+          <span class="pill">${Rules.daysSince(game.lastPlayed)}天未玩</span>
         </div>
       </div>
-      ${renderRuleSection("容易忘的规则", "forgets", game.forgets)}
-      ${renderRuleSection("常见争议", "disputes", game.disputes)}
-      ${renderRuleSection("开局准备", "setup", game.setup)}
-      ${renderRuleSection("计分提醒", "scoring", game.scoring)}
+      ${Rules.RULE_SECTIONS.map((section) => renderRuleSection(section.label, section.key, game[section.key])).join("")}
       <form class="add-rule" id="ruleForm">
         <select id="ruleTypeInput">
-          <option value="forgets">容易忘的规则</option>
-          <option value="disputes">常见争议</option>
-          <option value="setup">开局准备</option>
-          <option value="scoring">计分提醒</option>
+          ${Rules.RULE_SECTIONS.map((section) => `<option value="${section.key}">${section.label}</option>`).join("")}
         </select>
         <textarea id="ruleTextInput" rows="3" placeholder="补充一条聚会前要看的提醒" required></textarea>
         <button class="primary" type="submit">加入规则卡片</button>
@@ -220,11 +149,180 @@ function renderRuleSection(title, key, items) {
   `;
 }
 
+function renderQueue() {
+  const session = ReviewQueue.activeSession(state.sessions);
+  const notice = queueNotice ? `<p class="queue-notice">${escapeHtml(queueNotice)}</p>` : "";
+  const body = session ? renderActiveSession(session) : renderSessionStarter();
+  els.queueView.innerHTML = notice + body + renderHistory();
+  if (session) refreshQueueProgress();
+}
+
+function renderSessionStarter() {
+  const presetPlayers = els.playerFilter.value === "all" ? 4 : Number(els.playerFilter.value);
+  return `
+    <form id="sessionForm" class="session-form">
+      <label>
+        本局人数
+        <input id="sessionPlayersInput" type="number" min="1" max="12" value="${presetPlayers}" required />
+      </label>
+      <button class="primary" type="submit">生成复习队列</button>
+      <p class="hint">按人数筛掉不合适的桌游，并快照当前的必复习卡片（容易忘的规则 + 常见争议）。</p>
+    </form>
+  `;
+}
+
+function renderActiveSession(session) {
+  const excluded = session.excluded.length
+    ? `<p class="hint">已按 ${session.playerCount} 人筛掉：${session.excluded
+        .map((game) => `${escapeHtml(game.name)}（${game.minPlayers}-${game.maxPlayers}人）`)
+        .join("、")}</p>`
+    : "";
+  return `
+    <div class="session-head">
+      <div class="session-title">
+        <strong>第${session.version}次复习 · ${session.playerCount}人局</strong>
+        <span class="tag active">进行中</span>
+      </div>
+      <span id="queueProgress" class="queue-progress"></span>
+    </div>
+    ${excluded}
+    ${session.games.map(renderSessionGame).join("")}
+    <div class="session-actions">
+      <button id="completeSessionBtn" class="primary" type="button">完成复习并冻结快照</button>
+      <button id="stopSessionBtn" type="button">中止本次复习</button>
+      <p id="completeHint" class="hint"></p>
+    </div>
+  `;
+}
+
+function renderSessionGame(sessionGame) {
+  return `
+    <section class="queue-game">
+      <h3>${escapeHtml(sessionGame.name)}</h3>
+      ${sessionGame.cards.map(renderReviewCard).join("") || `<p class="empty">该游戏暂无必复习卡片。</p>`}
+    </section>
+  `;
+}
+
+function renderReviewCard(card) {
+  return `
+    <div class="review-card" data-card-id="${card.id}">
+      <label class="review-check">
+        <input type="checkbox" data-card-check="${card.id}" ${card.checked ? "checked" : ""} />
+        <span class="pill">${card.typeLabel}</span>
+        <span class="review-text">${escapeHtml(card.text)}</span>
+      </label>
+      <input
+        type="text"
+        class="conclusion-input"
+        data-card-conclusion="${card.id}"
+        value="${escapeHtml(card.conclusion)}"
+        placeholder="争议结论：填写本次复习达成一致的裁定"
+      />
+      <span class="card-flags" data-card-flags="${card.id}"></span>
+    </div>
+  `;
+}
+
+function renderHistory() {
+  const past = state.sessions.filter((session) => session.status !== "active").sort((a, b) => b.version - a.version);
+  const items = past.length ? past.map(renderHistoryItem).join("") : `<p class="empty">还没有已完成或已停止的复习记录。</p>`;
+  return `
+    <div class="queue-history">
+      <h3>历史快照</h3>
+      <p class="hint">已完成的快照会冻结：之后修改卡片只会生成新版本，旧记录不变。</p>
+      ${items}
+    </div>
+  `;
+}
+
+function renderHistoryItem(session) {
+  const cardCount = session.games.reduce((sum, game) => sum + game.cards.length, 0);
+  if (session.status === "stopped") {
+    const stopped = ReviewQueue.progress(session);
+    return `
+      <div class="history-item">
+        <div class="history-line">
+          <strong>第${session.version}次 · ${session.playerCount}人局</strong>
+          <span class="tag stopped">已停止</span>
+          <span class="history-meta">${formatTime(session.stoppedAt)} · 停止前完成 ${stopped.done}/${stopped.total} 张</span>
+        </div>
+        <p class="stop-reason">停止原因：${escapeHtml(session.stopReason)}</p>
+      </div>
+    `;
+  }
+  return `
+    <details class="history-item">
+      <summary>
+        <strong>第${session.version}次 · ${session.playerCount}人局</strong>
+        <span class="tag done">已完成</span>
+        <span class="history-meta">${formatTime(session.completedAt)} · ${session.games.length}个桌游 / ${cardCount}张卡片</span>
+      </summary>
+      ${session.games
+        .map(
+          (game) => `
+            <div class="snapshot-game">
+              <h4>${escapeHtml(game.name)}</h4>
+              <ul class="snapshot-list">
+                ${game.cards
+                  .map(
+                    (card) => `
+                      <li>
+                        <span class="pill">${card.typeLabel}</span>
+                        <span>${escapeHtml(card.text)}</span>
+                        <span class="conclusion">争议结论：${escapeHtml(card.conclusion)}</span>
+                      </li>
+                    `
+                  )
+                  .join("")}
+              </ul>
+            </div>
+          `
+        )
+        .join("")}
+    </details>
+  `;
+}
+
+// 只更新进度、标记和完成按钮，不整体重绘，避免输入结论时丢失焦点
+function refreshQueueProgress() {
+  const session = ReviewQueue.activeSession(state.sessions);
+  if (!session) return;
+  const current = ReviewQueue.progress(session);
+  const progressEl = document.querySelector("#queueProgress");
+  if (progressEl) {
+    progressEl.textContent = `${current.done}/${current.total} 张完成（已勾选 ${current.checked}，已填结论 ${current.concluded}）`;
+  }
+  session.games
+    .flatMap((game) => game.cards)
+    .forEach((card) => {
+      const missing = [];
+      if (!card.checked) missing.push("未勾选");
+      if (!card.conclusion.trim()) missing.push("未填结论");
+      const flags = document.querySelector(`[data-card-flags="${card.id}"]`);
+      if (flags) flags.textContent = missing.join(" · ");
+      const row = document.querySelector(`[data-card-id="${card.id}"]`);
+      if (row) {
+        row.classList.toggle("is-done", missing.length === 0);
+        row.classList.toggle("is-missing", missing.length > 0);
+      }
+    });
+  const completeButton = document.querySelector("#completeSessionBtn");
+  if (completeButton) completeButton.disabled = !ReviewQueue.canComplete(session);
+  const hint = document.querySelector("#completeHint");
+  if (hint) {
+    hint.textContent = current.ready
+      ? "全部卡片已勾选并填写争议结论，可以完成并冻结快照。"
+      : `还有 ${current.total - current.done} 张卡片未勾选或未填争议结论，整次复习不能完成。`;
+  }
+}
+
 function renderAll() {
   saveState();
   renderSummary();
   renderList();
   renderDetail();
+  renderQueue();
 }
 
 function readFileAsDataUrl(file) {
@@ -242,23 +340,16 @@ function readFileAsDataUrl(file) {
 
 async function addGame(event) {
   event.preventDefault();
-  const minPlayers = Number(els.minPlayersInput.value);
-  const maxPlayers = Math.max(minPlayers, Number(els.maxPlayersInput.value));
   const cover = await readFileAsDataUrl(els.coverInput.files[0]);
-  const game = {
-    id: crypto.randomUUID(),
+  const game = Rules.createGame({
     name: els.nameInput.value.trim(),
-    minPlayers,
-    maxPlayers,
+    minPlayers: Number(els.minPlayersInput.value),
+    maxPlayers: Number(els.maxPlayersInput.value),
     duration: Number(els.durationInput.value),
     complexity: els.complexityInput.value,
     lastPlayed: els.lastPlayedInput.value,
-    cover,
-    forgets: ["本局开始前先补充容易忘的规则。"],
-    disputes: [],
-    setup: ["整理组件并按人数调整初始设置。"],
-    scoring: ["确认终局计分项和即时得分项。"]
-  };
+    cover
+  });
   state.games.unshift(game);
   state.selectedId = game.id;
   els.gameForm.reset();
@@ -270,15 +361,6 @@ function setDefaultDate() {
   const date = new Date();
   date.setMonth(date.getMonth() - 2);
   els.lastPlayedInput.value = date.toISOString().slice(0, 10);
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
 
 els.searchInput.addEventListener("input", renderAll);
@@ -302,7 +384,7 @@ els.detailView.addEventListener("submit", (event) => {
   const key = document.querySelector("#ruleTypeInput").value;
   const text = document.querySelector("#ruleTextInput").value.trim();
   if (!text) return;
-  game[key].push(text);
+  Rules.addRule(game, key, text);
   renderAll();
 });
 
@@ -314,9 +396,7 @@ els.detailView.addEventListener("click", (event) => {
   if (!game) return;
 
   if (ruleButton) {
-    const key = ruleButton.dataset.ruleKey;
-    const index = Number(ruleButton.dataset.ruleIndex);
-    game[key].splice(index, 1);
+    Rules.removeRule(game, ruleButton.dataset.ruleKey, Number(ruleButton.dataset.ruleIndex));
     renderAll();
   }
 
@@ -328,6 +408,61 @@ els.detailView.addEventListener("click", (event) => {
   if (deleteButton) {
     state.games = state.games.filter((item) => item.id !== game.id);
     state.selectedId = state.games[0]?.id || "";
+    const stopped = ReviewQueue.stopForRemovedGame(state.sessions, game);
+    queueNotice = stopped ? stopped.stopReason : "";
+    renderAll();
+  }
+});
+
+els.queueView.addEventListener("submit", (event) => {
+  if (event.target.id !== "sessionForm") return;
+  event.preventDefault();
+  const playerCount = Number(document.querySelector("#sessionPlayersInput").value);
+  const result = ReviewQueue.createSession(state, playerCount);
+  if (result.error) {
+    queueNotice = result.error;
+  } else {
+    const total = result.session.games.reduce((sum, game) => sum + game.cards.length, 0);
+    queueNotice = `已生成第${result.session.version}次复习队列：${result.session.games.length}个桌游、${total}张必复习卡片。`;
+  }
+  renderAll();
+});
+
+els.queueView.addEventListener("change", (event) => {
+  const checkbox = event.target.closest("[data-card-check]");
+  if (!checkbox) return;
+  const session = ReviewQueue.activeSession(state.sessions);
+  if (!session) return;
+  ReviewQueue.toggleCard(session, checkbox.dataset.cardCheck);
+  saveState();
+  refreshQueueProgress();
+});
+
+els.queueView.addEventListener("input", (event) => {
+  const input = event.target.closest("[data-card-conclusion]");
+  if (!input) return;
+  const session = ReviewQueue.activeSession(state.sessions);
+  if (!session) return;
+  ReviewQueue.setConclusion(session, input.dataset.cardConclusion, input.value);
+  saveState();
+  refreshQueueProgress();
+});
+
+els.queueView.addEventListener("click", (event) => {
+  const session = ReviewQueue.activeSession(state.sessions);
+  if (!session) return;
+
+  if (event.target.closest("#completeSessionBtn")) {
+    queueNotice = ReviewQueue.complete(session)
+      ? `第${session.version}次复习已完成，快照已冻结。`
+      : "还有卡片未勾选或未填争议结论，整次复习不能完成。";
+    renderAll();
+    return;
+  }
+
+  if (event.target.closest("#stopSessionBtn")) {
+    ReviewQueue.stop(session, "已手动中止，本次复习不计入完成。");
+    queueNotice = "本次复习已中止。";
     renderAll();
   }
 });
