@@ -119,8 +119,27 @@
           <div id="detailView"></div>
         </aside>
       </section>
+
+      <section class="panel queue-panel">
+        <div class="panel-head">
+          <h2>聚会前复习队列</h2>
+          <span id="queueStatus">暂无进行中的复习</span>
+        </div>
+        <div class="queue-controls">
+          <label>
+            本局人数
+            <input id="partyPlayersInput" type="number" min="1" max="12" value="4" />
+          </label>
+          <button id="buildQueueBtn" class="primary" type="button">生成复习队列</button>
+        </div>
+        <div id="queueView"></div>
+        <div id="historyView"></div>
+      </section>
     </main>
 
+    <script src="storage.js"></script>
+    <script src="rules.js"></script>
+    <script src="queue.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
